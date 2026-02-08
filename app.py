@@ -9,6 +9,8 @@ from PIL import Image
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
 
+app.debug = True
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'images')
