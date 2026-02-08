@@ -2,14 +2,13 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from PIL import Image
 
 # === Flask App ===
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")  # default for testing
+app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")
 app.debug = True
 
 # === Database Config ===
@@ -26,6 +25,7 @@ db = SQLAlchemy(app)
 # === Models ===
 class User(db.Model):
     __tablename__ = "users"
+    __table_args__ = {'schema': 'public'}
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(30), nullable=False, unique=True)
     email = db.Column(db.Text, nullable=False, unique=True)
@@ -35,14 +35,16 @@ class User(db.Model):
 
 class Movie(db.Model):
     __tablename__ = 'movie'
+    __table_args__ = {'schema': 'public'}
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)   
+    name = db.Column(db.String(100), nullable=False)
     release = db.Column(db.Integer, nullable=False)
-    story = db.Column(db.Text, nullable=False)         
+    story = db.Column(db.Text, nullable=False)
     director = db.Column(db.Integer, nullable=False)
 
 class Comment(db.Model):
     __tablename__ = 'comment'
+    __table_args__ = {'schema': 'public'}
     id = db.Column(db.Integer, primary_key=True)
     userid = db.Column(db.Integer, nullable=False)
     movie = db.Column(db.Integer, nullable=False)
@@ -50,26 +52,23 @@ class Comment(db.Model):
 
 class UserVote(db.Model):
     __tablename__ = 'user_votes'
+    __table_args__ = {'schema': 'public'}
     userid = db.Column(db.Integer, primary_key=True)
     movie = db.Column(db.Integer, primary_key=True)
     rate = db.Column(db.Integer, nullable=False)
 
 class Actor(db.Model):
     __tablename__ = 'actor'
+    __table_args__ = {'schema': 'public'}
     id = db.Column(db.Integer, primary_key=True)
     firstname = db.Column(db.String(30), nullable=False)
     lastname = db.Column(db.String(30), nullable=False)
 
 class ActorMovies(db.Model):
     __tablename__ = 'actor_movies'
+    __table_args__ = {'schema': 'public'}
     movie_id = db.Column(db.Integer, primary_key=True)
     actor_id = db.Column(db.Integer, nullable=False)
-
-#test
-@app.route('/test_movies')
-def test_movies():
-    movies = Movie.query.all()
-    return f"Found {len(movies)} movies"
 
 # === Helper Functions ===
 def allowed_file(filename):
@@ -95,6 +94,15 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 with app.app_context():
     db.create_all()
 
+# === Debug Route ===
+@app.route('/debug/movies')
+def debug_movies():
+    try:
+        movies = db.session.execute("SELECT * FROM public.movie").fetchall()
+        return "<pre>" + str(movies) + "</pre>"
+    except Exception as e:
+        return f"Error: {e}"
+
 # === Routes ===
 @app.route('/register', methods=["GET","POST"])
 def register():
@@ -117,10 +125,8 @@ def register():
             new_user = User(username=username, email=email, firstname=firstname, lastname=lastname, password=hashed)
             db.session.add(new_user)
             db.session.commit()
-
             session["user_id"] = new_user.id
             return redirect(url_for("home"))
-
         except SQLAlchemyError as e:
             db.session.rollback()
             print(f"[register] Exception: {e}")
@@ -146,7 +152,6 @@ def login():
             print(f"[login] Exception: {e}")
             flash("Login error. Try again.", "error")
             return redirect(url_for("login"))
-
     return render_template("login.html")
 
 @app.route('/logout')
@@ -189,7 +194,7 @@ def add_movie():
             aid = aid.strip()
             if aid.isdigit():
                 db.session.execute(text(
-                    "INSERT INTO actor_movies(movie_id, actor_id) VALUES (:movie_id,:actor_id)"
+                    "INSERT INTO public.actor_movies(movie_id, actor_id) VALUES (:movie_id,:actor_id)"
                 ), {"movie_id": new_movie.id, "actor_id": int(aid)})
         db.session.commit()
 
@@ -225,7 +230,7 @@ def delete_movie(movie_id):
             if os.path.exists(poster_path):
                 os.remove(poster_path)
 
-            db.session.execute(text("DELETE FROM actor_movies WHERE movie_id=:m"), {"m": movie.id})
+            db.session.execute(text("DELETE FROM public.actor_movies WHERE movie_id=:m"), {"m": movie.id})
             db.session.delete(movie)
             db.session.commit()
             flash("Movie deleted successfully!", "success")
@@ -246,29 +251,29 @@ def movie_detail(movie_id):
 
     actors = db.session.execute(text("""
         SELECT actor.id, actor.firstname, actor.lastname
-        FROM actor
+        FROM public.actor
         WHERE actor.id IN (
-            SELECT actor_id FROM actor_movies WHERE movie_id=:m
+            SELECT actor_id FROM public.actor_movies WHERE movie_id=:m
         )
     """), {"m": movie.id}).fetchall()
 
     comments = db.session.execute(text("""
         SELECT comment.*, users.username
-        FROM comment
-        JOIN users ON comment.userid = users.id
+        FROM public.comment
+        JOIN public.users ON comment.userid = users.id
         WHERE comment.movie=:m
         ORDER BY comment.id DESC
     """), {"m": movie.id}).fetchall()
 
     avg_rate_res = db.session.execute(text(
-        "SELECT AVG(rate) as avg_rate FROM user_votes WHERE movie=:m"
+        "SELECT AVG(rate) as avg_rate FROM public.user_votes WHERE movie=:m"
     ), {"m": movie.id}).fetchone()
     avg_rate = round(avg_rate_res.avg_rate,1) if avg_rate_res.avg_rate else "N/A"
 
     user_rate = None
     if "user_id" in session:
         user_vote_res = db.session.execute(text(
-            "SELECT rate FROM user_votes WHERE userid=:u AND movie=:m"
+            "SELECT rate FROM public.user_votes WHERE userid=:u AND movie=:m"
         ), {"u": session["user_id"], "m": movie.id}).fetchone()
         user_rate = user_vote_res.rate if user_vote_res else None
 
@@ -321,7 +326,7 @@ def api_movies():
     data = []
     for m in movies:
         avg_rate_res = db.session.execute(text(
-            "SELECT AVG(rate) as avg_rate FROM user_votes WHERE movie=:m"
+            "SELECT AVG(rate) as avg_rate FROM public.user_votes WHERE movie=:m"
         ), {"m": m.id}).fetchone()
         avg_rate = round(avg_rate_res.avg_rate,1) if avg_rate_res.avg_rate else 0
         data.append({
