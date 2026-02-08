@@ -303,6 +303,9 @@ def api_movies():
         })
     return jsonify(data)
 
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+db.create_all()  # Make sure tables exist even when running via Gunicorn
+
 # === Run App ===
 if __name__ == "__main__":
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
