@@ -65,6 +65,12 @@ class ActorMovies(db.Model):
     movie_id = db.Column(db.Integer, primary_key=True)
     actor_id = db.Column(db.Integer, nullable=False)
 
+#test
+@app.route('/test_movies')
+def test_movies():
+    movies = Movie.query.all()
+    return f"Found {len(movies)} movies"
+
 # === Helper Functions ===
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
