@@ -5,22 +5,22 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from PIL import Image  
+from PIL import Image
 
 # === Flask App ===
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")  # Default for testing
+app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")  # default for testing
 app.debug = True
 
-# DATABASE
+# === Database Config ===
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///test.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# UPLOADS
+# === Upload Config ===
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
-# SQLAlchemy
+# === Initialize DB ===
 db = SQLAlchemy(app)
 
 # === Models ===
@@ -65,7 +65,7 @@ class ActorMovies(db.Model):
     movie_id = db.Column(db.Integer, primary_key=True)
     actor_id = db.Column(db.Integer, nullable=False)
 
-# === Helpers ===
+# === Helper Functions ===
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -82,10 +82,12 @@ def is_admin():
         print(f"[is_admin] Exception: {e}")
         return False
 
-# # === Ensure tables exist ===
-# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-# with app.app_context():
-#     db.create_all()  # Make sure tables exist even when using Gunicorn
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Ensure tables exist
+with app.app_context():
+    db.create_all()
 
 # === Routes ===
 @app.route('/register', methods=["GET","POST"])
@@ -110,10 +112,7 @@ def register():
             db.session.add(new_user)
             db.session.commit()
 
-            if new_user.id is None:
-                raise Exception("User ID not set after commit!")
-
-            session["user_id"] = int(new_user.id)
+            session["user_id"] = new_user.id
             return redirect(url_for("home"))
 
         except SQLAlchemyError as e:
@@ -129,11 +128,10 @@ def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-
         try:
             user = User.query.filter_by(username=username).first()
             if user and check_password_hash(user.password, password):
-                session["user_id"] = int(user.id)
+                session["user_id"] = user.id
                 return redirect(url_for("home"))
             else:
                 flash("Username or password incorrect!", "error")
@@ -154,23 +152,14 @@ def logout():
 def home():
     if "user_id" not in session:
         return redirect(url_for("login"))
-
     try:
         movies = Movie.query.all()
     except SQLAlchemyError as e:
         print(f"[home] DB Error fetching movies: {e}")
         movies = []
 
-    try:
-        admin = is_admin()
-    except SQLAlchemyError as e:
-        print(f"[home] is_admin Error: {e}")
-        admin = False
-
-    if admin:
-        return render_template("admin_dashboard.html", movies=movies)
-    else:
-        return render_template("index.html", movies=movies)
+    admin = is_admin()
+    return render_template("index.html" if not admin else "admin_dashboard.html", movies=movies)
 
 # === Admin Routes ===
 @app.route('/admin/add', methods=["POST"])
@@ -185,33 +174,36 @@ def add_movie():
     director = request.form.get("director")
     actor_ids = request.form.get("actors", "").split(",")
 
-    new_movie = Movie(name=name, release=release, story=story, director=director)
-    db.session.add(new_movie)
-    db.session.commit()
+    try:
+        new_movie = Movie(name=name, release=release, story=story, director=director)
+        db.session.add(new_movie)
+        db.session.commit()
 
-    for aid in actor_ids:
-        aid = aid.strip()
-        if aid.isdigit():
-            db.session.execute(text(
-                "INSERT INTO actor_movies(movie_id, actor_id) VALUES (:movie_id,:actor_id)"
-            ), {"movie_id": new_movie.id, "actor_id": int(aid)})
-    db.session.commit()
+        for aid in actor_ids:
+            aid = aid.strip()
+            if aid.isdigit():
+                db.session.execute(text(
+                    "INSERT INTO actor_movies(movie_id, actor_id) VALUES (:movie_id,:actor_id)"
+                ), {"movie_id": new_movie.id, "actor_id": int(aid)})
+        db.session.commit()
 
-    file = request.files.get("poster")
-    if file and allowed_file(file.filename):
-        try:
+        file = request.files.get("poster")
+        if file and allowed_file(file.filename):
             filename = f"{new_movie.id}.jpg"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             img = Image.open(file)
             rgb_img = img.convert('RGB')
             rgb_img.save(filepath, format='JPEG')
-        except Exception as e:
-            flash(f"Error saving poster: {e}", "error")
-            print(e)
-    else:
-        flash("No poster uploaded or invalid file type", "warning")
 
-    flash("Movie added successfully!", "success")
+        flash("Movie added successfully!", "success")
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"[add_movie] Exception: {e}")
+        flash("Error adding movie.", "error")
+    except Exception as e:
+        print(f"[add_movie] Poster error: {e}")
+        flash(f"Error saving poster: {e}", "error")
+
     return redirect(url_for("home"))
 
 @app.route('/admin/delete/<int:movie_id>', methods=["POST"])
@@ -220,16 +212,21 @@ def delete_movie(movie_id):
         flash("Access denied!", "error")
         return redirect(url_for("home"))
 
-    movie = Movie.query.get(movie_id)
-    if movie:
-        poster_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{movie.id}.jpg")
-        if os.path.exists(poster_path):
-            os.remove(poster_path)
+    try:
+        movie = Movie.query.get(movie_id)
+        if movie:
+            poster_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{movie.id}.jpg")
+            if os.path.exists(poster_path):
+                os.remove(poster_path)
 
-        db.session.execute(text("DELETE FROM actor_movies WHERE movie_id=:m"), {"m": movie.id})
-        db.session.delete(movie)
-        db.session.commit()
-        flash("Movie deleted successfully!", "success")
+            db.session.execute(text("DELETE FROM actor_movies WHERE movie_id=:m"), {"m": movie.id})
+            db.session.delete(movie)
+            db.session.commit()
+            flash("Movie deleted successfully!", "success")
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"[delete_movie] Exception: {e}")
+        flash("Error deleting movie.", "error")
 
     return redirect(url_for("home"))
 
@@ -280,9 +277,14 @@ def add_comment(movie_id):
         return redirect(url_for("login"))
 
     content = request.form.get("content")
-    new_comment = Comment(userid=session["user_id"], movie=movie_id, content=content)
-    db.session.add(new_comment)
-    db.session.commit()
+    try:
+        new_comment = Comment(userid=session["user_id"], movie=movie_id, content=content)
+        db.session.add(new_comment)
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"[add_comment] Exception: {e}")
+        flash("Error adding comment.", "error")
     return redirect(url_for("movie_detail", movie_id=movie_id))
 
 @app.route('/movie/<int:movie_id>/vote', methods=["POST"])
@@ -291,17 +293,22 @@ def vote(movie_id):
         flash("Login required!", "error")
         return redirect(url_for("login"))
 
-    rate = int(request.form.get("rate"))
-    existing = UserVote.query.filter_by(userid=session["user_id"], movie=movie_id).first()
-    if existing:
-        existing.rate = rate
-    else:
-        new_vote = UserVote(userid=session["user_id"], movie=movie_id, rate=rate)
-        db.session.add(new_vote)
-    db.session.commit()
+    try:
+        rate = int(request.form.get("rate"))
+        existing = UserVote.query.filter_by(userid=session["user_id"], movie=movie_id).first()
+        if existing:
+            existing.rate = rate
+        else:
+            new_vote = UserVote(userid=session["user_id"], movie=movie_id, rate=rate)
+            db.session.add(new_vote)
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        print(f"[vote] Exception: {e}")
+        flash("Error saving vote.", "error")
     return redirect(url_for("movie_detail", movie_id=movie_id))
 
-# === API Route ===
+# === API ===
 @app.route('/api/movies')
 def api_movies():
     movies = Movie.query.all()
