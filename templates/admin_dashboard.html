@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard - Movies</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+
+<header>
+    <h1>Admin Dashboard</h1>
+    <div class="header-actions">
+        {% if session['user_id'] %}
+        <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        {% endif %}
+        <button class="add-movie-btn">+ Add Movie</button>
+    </div>
+</header>
+
+<!-- Overlay Add Movie -->
+<div class="add-movie-overlay" id="addFormOverlay">
+    <div class="add-movie-form">
+        <button type="button" class="close-btn" onclick="closeForm()">✖</button>
+        <h2>Add New Movie</h2>
+        <form action="{{ url_for('add_movie') }}" method="POST" enctype="multipart/form-data">
+            <input type="text" name="name" placeholder="Movie Name" required>
+            <input type="number" name="release" placeholder="Release Year" required>
+            <textarea name="story" placeholder="Story" rows="3" required></textarea>
+            <input type="number" name="director" placeholder="Director ID" required>
+            <input type="text" name="actors" placeholder="Actor IDs (comma separated)" required>
+
+            <label class="file-label" id="fileLabel">Choose Poster</label>
+            <input type="file" name="poster" id="posterInput" accept="image/*" required>
+
+            <button type="submit">Add Movie</button>
+        </form>
+    </div>
+</div>
+
+<!-- Movies Grid -->
+<div class="movies-container">
+    {% for movie in movies %}
+    <div class="movie-card">
+        <img src="{{ url_for('static', filename='images/' ~ movie.id ~ '.jpg') }}"
+             onerror="this.onerror=null;this.src='/static/images/default.jpg';" alt="{{ movie.name }}">
+        <div class="movie-card-content">
+            <h3>{{ movie.name }}</h3>
+            <p>Year: {{ movie.release }}</p>
+            <p>{{ movie.story[:50] }}...</p>
+            <form action="{{ url_for('delete_movie', movie_id=movie.id) }}" method="POST">
+                <button type="submit">Delete</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+// باز و بسته کردن فرم Add Movie
+document.querySelector(".add-movie-btn").addEventListener("click", function(){
+    document.getElementById("addFormOverlay").style.display = "flex";
+});
+function closeForm(){
+    document.getElementById("addFormOverlay").style.display = "none";
+}
+
+// نمایش اسم فایل انتخابی
+const fileInput = document.getElementById("posterInput");
+const fileLabel = document.getElementById("fileLabel");
+fileLabel.addEventListener("click",()=>fileInput.click());
+fileInput.addEventListener("change", function(){
+    if(fileInput.files.length > 0){
+        fileLabel.textContent = fileInput.files[0].name;
+    } else {
+        fileLabel.textContent = "Choose Poster";
+    }
+});
+</script>
+
+</body>
+</html>

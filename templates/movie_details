@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ movie.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f0f2f5;
+    margin: 0;
+    padding: 0;
+}
+.movie-details-container {
+    display: flex;
+    max-width: 1000px;
+    margin: 50px auto;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    overflow: hidden;
+}
+.poster img {
+    width: 300px;
+    height: 450px;
+    object-fit: cover;
+}
+.info {
+    padding: 20px;
+    flex: 1;
+}
+.info h1 {
+    margin-top: 0;
+}
+.info ul {
+    padding-left: 20px;
+}
+form {
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+input[type="number"], textarea {
+    width: 50%;
+    padding: 5px;
+    margin-right: 10px;
+}
+button {
+    padding: 5px 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+button:hover {
+    background-color: #0056b3;
+}
+.comment-list li {
+    margin-bottom: 10px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+</style>
+</head>
+<body>
+
+<div class="movie-details-container">
+
+    <div class="poster">
+        <img src="{{ url_for('static', filename='images/' + str(movie.id) + '.jpg') }}"
+             onerror="this.onerror=null;this.src='/static/images/default.jpg';" alt="{{ movie.name }}">
+    </div>
+
+    <div class="info">
+        <h1>{{ movie.name }}</h1>
+        <p><strong>Year:</strong> {{ movie.release }}</p>
+        <p><strong>Story:</strong> {{ movie.story }}</p>
+        <p><strong>Average Rate:</strong> {{ avg_rate }}</p>
+
+        <h3>Actors:</h3>
+        {% if actors %}
+        <ul>
+            {% for actor in actors %}
+            <li>{{ actor.firstname }} {{ actor.lastname }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>No actors listed.</p>
+        {% endif %}
+
+        <h3>Your Rate:</h3>
+        <form action="{{ url_for('submit_vote', movie_id=movie.id) }}" method="POST">
+            <input type="number" name="rate" min="1" max="10" value="{{ user_rate if user_rate else '' }}" required>
+            <button type="submit">Submit Rate</button>
+        </form>
+
+        <h3>Comments:</h3>
+        <ul class="comment-list">
+            {% for comment, user in comments %}
+            <li><strong>{{ user.username }}:</strong> {{ comment.content }}</li>
+            {% endfor %}
+        </ul>
+
+        <h3>Add Comment:</h3>
+        <form action="{{ url_for('add_comment', movie_id=movie.id) }}" method="POST">
+            <textarea name="content" rows="3" required></textarea>
+            <button type="submit">Post Comment</button>
+        </form>
+    </div>
+</div>
+
+</body>
+</html>

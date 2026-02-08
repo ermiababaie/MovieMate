@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ movie.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/movie_details.css') }}">
+<style>
+/* ===== Logout Button ===== */
+.logout-btn {
+    padding: 8px 16px;
+    background: linear-gradient(45deg, #f44336, #e53935);
+    color: #fff;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: bold;
+    float: right;
+    margin: 10px;
+    transition: 0.3s;
+}
+.logout-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* ===== Layout ===== */
+body {
+    margin: 0;
+    font-family: 'Poppins', sans-serif;
+    background-color: #121212;
+    color: #e0e0e0;
+}
+header { display:flex; justify-content:space-between; align-items:center; padding:10px 20px; background:#1f1f1f; }
+.movie-details-container { display:flex; flex-wrap:wrap; margin:20px; gap:20px; }
+.poster img { width:300px; height:450px; object-fit:cover; border-radius:12px; }
+.info { max-width:700px; }
+.info h1 { color:#ffd700; }
+.vote-form input { width:60px; padding:5px; margin-right:10px; border-radius:5px; border:none; }
+.vote-form button { padding:5px 10px; border-radius:5px; border:none; background:#4caf50; color:#fff; cursor:pointer; }
+.vote-form button:hover { background:#81c784; }
+.comments-section, .add-comment { margin-top:20px; }
+.comment-card { background:#222; padding:8px; border-radius:8px; margin-bottom:8px; }
+textarea { width:100%; padding:8px; border-radius:8px; border:none; background:#1e1e1e; color:#fff; }
+.add-comment button { margin-top:5px; padding:8px 12px; border:none; border-radius:8px; background:#4caf50; color:#fff; cursor:pointer; }
+.add-comment button:hover { background:#81c784; }
+.actors-list { list-style:none; padding-left:0; }
+.actors-list li { margin-bottom:5px; }
+.no-comments { color:#aaa; font-style:italic; }
+</style>
+</head>
+<body>
+
+<header>
+    <h1>{{ movie.name }}</h1>
+    {% if session['user_id'] %}
+    <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+    {% endif %}
+</header>
+
+<div class="movie-details-container">
+
+    <!-- پوستر -->
+    <div class="poster">
+        <img src="{{ url_for('static', filename='images/' ~ movie.id ~ '.jpg') }}"
+             onerror="this.onerror=null;this.src='/static/images/default.jpg';"
+             alt="{{ movie.name }}">
+    </div>
+
+    <!-- اطلاعات فیلم -->
+    <div class="info">
+        <h1>{{ movie.name }}</h1>
+        <p><strong>Year:</strong> {{ movie.release }}</p>
+        <p><strong>Story:</strong> {{ movie.story }}</p>
+        <p class="avg-rate"><strong>Average Rate:</strong> {{ avg_rate }}</p>
+
+        <h3>Actors:</h3>
+        {% if actors %}
+        <ul class="actors-list">
+            {% for actor in actors %}
+            <li>{{ actor.firstname }} {{ actor.lastname }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="no-comments">No actors listed.</p>
+        {% endif %}
+
+        <!-- رای دادن -->
+        <h3>Your Rate:</h3>
+        <form class="vote-form" action="{{ url_for('vote', movie_id=movie.id) }}" method="POST">
+            <input type="number" name="rate" min="1" max="10" value="{{ user_rate if user_rate else '' }}" required>
+            <button type="submit">Submit Rate</button>
+        </form>
+
+        <!-- کامنت‌ها -->
+        <div class="comments-section">
+            <h3>Comments:</h3>
+            {% if comments %}
+                {% for comment in comments %}
+                <div class="comment-card">
+                    <strong>{{ comment.username }}:</strong> {{ comment.content }}
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-comments">No comments yet.</p>
+            {% endif %}
+        </div>
+
+        <!-- اضافه کردن کامنت -->
+        <div class="add-comment">
+            <h3>Add Comment:</h3>
+            <form action="{{ url_for('add_comment', movie_id=movie.id) }}" method="POST">
+                <textarea name="content" rows="3" placeholder="Write your comment..." required></textarea>
+                <button type="submit">Post Comment</button>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>
