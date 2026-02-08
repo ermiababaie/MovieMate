@@ -82,10 +82,10 @@ def is_admin():
         print(f"[is_admin] Exception: {e}")
         return False
 
-# === Ensure tables exist ===
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-with app.app_context():
-    db.create_all()  # Make sure tables exist even when using Gunicorn
+# # === Ensure tables exist ===
+# os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+# with app.app_context():
+#     db.create_all()  # Make sure tables exist even when using Gunicorn
 
 # === Routes ===
 @app.route('/register', methods=["GET","POST"])
