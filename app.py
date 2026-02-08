@@ -65,10 +65,15 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def is_admin():
-    if "user_id" not in session:
+    try:
+        user_id = session.get("user_id")
+        if not user_id:
+            return False
+        user = User.query.get(user_id)
+        return user and user.username.lower() == "admin"
+    except Exception as e:
+        print(f"[is_admin] Exception: {e}")
         return False
-    user = User.query.get(session["user_id"])
-    return user and user.username.lower() == "admin"
 
 
 @app.route('/register', methods=["GET","POST"])
@@ -102,13 +107,20 @@ def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password,password):
-            session["user_id"] = user.id
-            return redirect(url_for("home"))
-        else:
-            flash("Username or password incorrect!", "error")
+
+        try:
+            user = User.query.filter_by(username=username).first()
+            if user and check_password_hash(user.password, password):
+                session["user_id"] = int(user.id)
+                return redirect(url_for("home"))
+            else:
+                flash("Username or password incorrect!", "error")
+                return redirect(url_for("login"))
+        except Exception as e:
+            print(f"[login] Exception: {e}")
+            flash("Login error. Try again.", "error")
             return redirect(url_for("login"))
+
     return render_template("login.html")
 
 @app.route('/logout')
@@ -120,11 +132,24 @@ def logout():
 def home():
     if "user_id" not in session:
         return redirect(url_for("login"))
-    movies = Movie.query.all()
-    if is_admin():
+
+    try:
+        movies = Movie.query.all()
+    except Exception as e:
+        print(f"[home] DB Error fetching movies: {e}")
+        movies = []
+
+    try:
+        admin = is_admin()
+    except Exception as e:
+        print(f"[home] is_admin Error: {e}")
+        admin = False
+
+    if admin:
         return render_template("admin_dashboard.html", movies=movies)
     else:
-        return render_template("index.html")  
+        return render_template("index.html", movies=movies)
+
     
 @app.route('/admin/add', methods=["POST"])
 def add_movie():
