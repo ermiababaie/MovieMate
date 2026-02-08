@@ -22,3 +22,6 @@
 - **Backend:** Flask (Python)  
 - **دیگر ابزارها:** Jinja2 برای قالب‌بندی صفحات  
 
+
+![صفحه اصلی Movie Mate](static/images/site1.png)
+![جزئیات فیلم](static/images/site2.png)
