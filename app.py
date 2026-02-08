@@ -4,6 +4,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from PIL import Image  
 
 # === Flask App ===
@@ -11,11 +12,15 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")  # Default for testing
 app.debug = True
 
+# DATABASE
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///test.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# UPLOADS
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
+# SQLAlchemy
 db = SQLAlchemy(app)
 
 # === Models ===
@@ -70,10 +75,17 @@ def is_admin():
         if not user_id:
             return False
         user = User.query.get(user_id)
-        return user and user.username.lower() == "admin"
-    except Exception as e:
+        if not user:
+            return False
+        return user.username.lower() == "admin"
+    except SQLAlchemyError as e:
         print(f"[is_admin] Exception: {e}")
         return False
+
+# === Ensure tables exist ===
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+with app.app_context():
+    db.create_all()  # Make sure tables exist even when using Gunicorn
 
 # === Routes ===
 @app.route('/register', methods=["GET","POST"])
@@ -94,12 +106,17 @@ def register():
 
         try:
             hashed = generate_password_hash(password)
-            new_user = User(username=username,email=email,firstname=firstname,lastname=lastname,password=hashed)
+            new_user = User(username=username, email=email, firstname=firstname, lastname=lastname, password=hashed)
             db.session.add(new_user)
             db.session.commit()
+
+            if new_user.id is None:
+                raise Exception("User ID not set after commit!")
+
             session["user_id"] = int(new_user.id)
             return redirect(url_for("home"))
-        except Exception as e:
+
+        except SQLAlchemyError as e:
             db.session.rollback()
             print(f"[register] Exception: {e}")
             flash("Error creating account. Try again.", "error")
@@ -121,7 +138,7 @@ def login():
             else:
                 flash("Username or password incorrect!", "error")
                 return redirect(url_for("login"))
-        except Exception as e:
+        except SQLAlchemyError as e:
             print(f"[login] Exception: {e}")
             flash("Login error. Try again.", "error")
             return redirect(url_for("login"))
@@ -140,13 +157,13 @@ def home():
 
     try:
         movies = Movie.query.all()
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"[home] DB Error fetching movies: {e}")
         movies = []
 
     try:
         admin = is_admin()
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"[home] is_admin Error: {e}")
         admin = False
 
@@ -155,6 +172,7 @@ def home():
     else:
         return render_template("index.html", movies=movies)
 
+# === Admin Routes ===
 @app.route('/admin/add', methods=["POST"])
 def add_movie():
     if not is_admin():
@@ -165,11 +183,11 @@ def add_movie():
     release = request.form.get("release")
     story = request.form.get("story")
     director = request.form.get("director")
-    actor_ids = request.form.get("actors", "").split(",")  
+    actor_ids = request.form.get("actors", "").split(",")
 
     new_movie = Movie(name=name, release=release, story=story, director=director)
     db.session.add(new_movie)
-    db.session.commit() 
+    db.session.commit()
 
     for aid in actor_ids:
         aid = aid.strip()
@@ -182,14 +200,11 @@ def add_movie():
     file = request.files.get("poster")
     if file and allowed_file(file.filename):
         try:
-            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-            filename = f"{new_movie.id}.jpg"  
+            filename = f"{new_movie.id}.jpg"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
             img = Image.open(file)
-            rgb_img = img.convert('RGB')  
+            rgb_img = img.convert('RGB')
             rgb_img.save(filepath, format='JPEG')
-
         except Exception as e:
             flash(f"Error saving poster: {e}", "error")
             print(e)
@@ -218,6 +233,7 @@ def delete_movie(movie_id):
 
     return redirect(url_for("home"))
 
+# === Movie Routes ===
 @app.route('/movie/<int:movie_id>')
 def movie_detail(movie_id):
     movie = Movie.query.get(movie_id)
@@ -285,6 +301,7 @@ def vote(movie_id):
     db.session.commit()
     return redirect(url_for("movie_detail", movie_id=movie_id))
 
+# === API Route ===
 @app.route('/api/movies')
 def api_movies():
     movies = Movie.query.all()
@@ -303,11 +320,6 @@ def api_movies():
         })
     return jsonify(data)
 
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-db.create_all()  # Make sure tables exist even when running via Gunicorn
-
 # === Run App ===
 if __name__ == "__main__":
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    db.create_all()  # Make sure tables exist
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
