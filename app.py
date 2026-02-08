@@ -6,23 +6,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from PIL import Image
 
-# === Flask App ===
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")
 app.debug = True
 
-# === Database Config ===
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///test.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# === Upload Config ===
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
-# === Initialize DB ===
 db = SQLAlchemy(app)
 
-# === Models ===
 class User(db.Model):
     __tablename__ = "users"
     __table_args__ = {'schema': 'public'}
@@ -70,7 +65,6 @@ class ActorMovies(db.Model):
     movie_id = db.Column(db.Integer, primary_key=True)
     actor_id = db.Column(db.Integer, nullable=False)
 
-# === Helper Functions ===
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -87,14 +81,11 @@ def is_admin():
         print(f"[is_admin] Exception: {e}")
         return False
 
-# Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Ensure tables exist
 with app.app_context():
     db.create_all()
 
-# === Debug Route ===
 @app.route('/debug/movies')
 def debug_movies():
     try:
@@ -103,7 +94,6 @@ def debug_movies():
     except Exception as e:
         return f"Error: {e}"
 
-# === Routes ===
 @app.route('/register', methods=["GET","POST"])
 def register():
     if request.method == "POST":
@@ -172,7 +162,6 @@ def home():
     admin = is_admin()
     return render_template("index.html" if not admin else "admin_dashboard.html", movies=movies)
 
-# === Admin Routes ===
 @app.route('/admin/add', methods=["POST"])
 def add_movie():
     if not is_admin():
@@ -241,7 +230,6 @@ def delete_movie(movie_id):
 
     return redirect(url_for("home"))
 
-# === Movie Routes ===
 @app.route('/movie/<int:movie_id>')
 def movie_detail(movie_id):
     movie = Movie.query.get(movie_id)
@@ -319,7 +307,6 @@ def vote(movie_id):
         flash("Error saving vote.", "error")
     return redirect(url_for("movie_detail", movie_id=movie_id))
 
-# === API ===
 @app.route('/api/movies')
 def api_movies():
     movies = Movie.query.all()
@@ -338,6 +325,5 @@ def api_movies():
         })
     return jsonify(data)
 
-# === Run App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
