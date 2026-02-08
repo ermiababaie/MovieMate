@@ -6,18 +6,19 @@ from werkzeug.utils import secure_filename
 from sqlalchemy import text
 from PIL import Image  
 
+# === Flask App ===
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY")
-
+app.secret_key = os.environ.get("SECRET_KEY", "devsecret123")  # Default for testing
 app.debug = True
 
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "sqlite:///test.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'images')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 db = SQLAlchemy(app)
 
+# === Models ===
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True)
@@ -35,14 +36,12 @@ class Movie(db.Model):
     story = db.Column(db.Text, nullable=False)         
     director = db.Column(db.Integer, nullable=False)
 
-
 class Comment(db.Model):
     __tablename__ = 'comment'
     id = db.Column(db.Integer, primary_key=True)
     userid = db.Column(db.Integer, nullable=False)
     movie = db.Column(db.Integer, nullable=False)
     content = db.Column(db.Text)
-
 
 class UserVote(db.Model):
     __tablename__ = 'user_votes'
@@ -61,6 +60,7 @@ class ActorMovies(db.Model):
     movie_id = db.Column(db.Integer, primary_key=True)
     actor_id = db.Column(db.Integer, nullable=False)
 
+# === Helpers ===
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -75,7 +75,7 @@ def is_admin():
         print(f"[is_admin] Exception: {e}")
         return False
 
-
+# === Routes ===
 @app.route('/register', methods=["GET","POST"])
 def register():
     if request.method == "POST":
@@ -92,13 +92,18 @@ def register():
             flash("Email already registered!", "error")
             return redirect(url_for("register"))
 
-        hashed = generate_password_hash(password)
-        new_user = User(username=username,email=email,firstname=firstname,lastname=lastname,password=hashed)
-        db.session.add(new_user)
-        db.session.commit()
-
-        session["user_id"] = new_user.id
-        return redirect(url_for("home"))
+        try:
+            hashed = generate_password_hash(password)
+            new_user = User(username=username,email=email,firstname=firstname,lastname=lastname,password=hashed)
+            db.session.add(new_user)
+            db.session.commit()
+            session["user_id"] = int(new_user.id)
+            return redirect(url_for("home"))
+        except Exception as e:
+            db.session.rollback()
+            print(f"[register] Exception: {e}")
+            flash("Error creating account. Try again.", "error")
+            return redirect(url_for("register"))
 
     return render_template("register.html")
 
@@ -150,7 +155,6 @@ def home():
     else:
         return render_template("index.html", movies=movies)
 
-    
 @app.route('/admin/add', methods=["POST"])
 def add_movie():
     if not is_admin():
@@ -166,6 +170,7 @@ def add_movie():
     new_movie = Movie(name=name, release=release, story=story, director=director)
     db.session.add(new_movie)
     db.session.commit() 
+
     for aid in actor_ids:
         aid = aid.strip()
         if aid.isdigit():
@@ -231,7 +236,7 @@ def movie_detail(movie_id):
     comments = db.session.execute(text("""
         SELECT comment.*, users.username
         FROM comment
-        JOIN users ON comment.userID = users.id
+        JOIN users ON comment.userid = users.id
         WHERE comment.movie=:m
         ORDER BY comment.id DESC
     """), {"m": movie.id}).fetchall()
@@ -244,7 +249,7 @@ def movie_detail(movie_id):
     user_rate = None
     if "user_id" in session:
         user_vote_res = db.session.execute(text(
-            "SELECT rate FROM user_votes WHERE userID=:u AND movie=:m"
+            "SELECT rate FROM user_votes WHERE userid=:u AND movie=:m"
         ), {"u": session["user_id"], "m": movie.id}).fetchone()
         user_rate = user_vote_res.rate if user_vote_res else None
 
@@ -298,6 +303,8 @@ def api_movies():
         })
     return jsonify(data)
 
+# === Run App ===
 if __name__ == "__main__":
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    db.create_all()  # Make sure tables exist
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
